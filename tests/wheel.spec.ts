@@ -21,11 +21,10 @@ test.describe("Host view - UI structure", () => {
     await expect(page.locator("#addNameBtn")).toBeVisible();
   });
 
-  test("shows firebase banner when not configured", async ({ page }) => {
+  test("connects when firebase is configured", async ({ page }) => {
     await page.goto("/");
-    // Firebase config endpoint returns error in test env
-    await expect(page.locator("#firebaseBanner")).toBeVisible({ timeout: 5000 });
-    await expect(page.locator("#connStatus")).toContainText("Firebase not configured");
+    await expect(page.locator("#connStatus")).toContainText("Connected", { timeout: 5000 });
+    await expect(page.locator(".conn-dot")).toHaveClass(/online/);
   });
 
   test("QR code and join URL are generated", async ({ page }) => {
@@ -69,6 +68,13 @@ test.describe("Host view - UI structure", () => {
     await page.goto("/");
     await expect(page.locator("#winnerCount")).toHaveText("0 / 5");
   });
+
+  test("winner overlay and confetti canvas exist but are hidden", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator("#winnerOverlay")).not.toHaveClass(/active/);
+    await expect(page.locator("#confettiCanvas")).toBeVisible();
+    await expect(page.locator("#dismissWinner")).toBeVisible();
+  });
 });
 
 test.describe("Join view - UI structure", () => {
@@ -96,11 +102,10 @@ test.describe("Join view - UI structure", () => {
     await expect(input).toHaveAttribute("placeholder", "Your name");
   });
 
-  test("shows error status when firebase is unavailable", async ({ page }) => {
+  test("shows ready status when firebase is available", async ({ page }) => {
     await page.goto("/?mode=join&room=test-room");
-    // Without firebase config, join should show error
-    await expect(page.locator("#joinStatus")).toContainText("unavailable", { timeout: 5000 });
-    await expect(page.locator('[data-testid="joinBtn"]')).toBeDisabled();
+    await expect(page.locator("#joinStatus")).toContainText("Ready", { timeout: 5000 });
+    await expect(page.locator('[data-testid="joinBtn"]')).toBeEnabled();
   });
 });
 
@@ -131,11 +136,11 @@ test.describe("Security & privacy", () => {
     expect(html).toContain("/api/firebase-config");
   });
 
-  test("firebase config endpoint exists", async ({ page }) => {
+  test("firebase config endpoint serves config at runtime", async ({ page }) => {
     const response = await page.goto("/api/firebase-config");
-    expect(response!.status()).toBe(503); // not configured in test
+    expect(response!.status()).toBe(200);
     const body = await response!.json();
-    expect(body.error).toBeTruthy();
+    expect(body.projectId).toBeTruthy();
   });
 
   test("no tracking scripts in page", async ({ page }) => {

@@ -214,6 +214,40 @@
       }
       .firebase-banner.active { display: block; }
 
+      /* ─── Winner overlay ─── */
+      .winner-overlay {
+        position: fixed; inset: 0; z-index: 200;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(0,0,0,0.7); backdrop-filter: blur(6px);
+        opacity: 0; pointer-events: none;
+        transition: opacity 0.4s ease;
+      }
+      .winner-overlay.active { opacity: 1; pointer-events: auto; }
+      .winner-announce {
+        text-align: center;
+        animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+      }
+      .winner-announce .crown { font-size: 4rem; margin-bottom: 8px; }
+      .winner-announce h2 {
+        font-size: 2.5rem; font-weight: 900; letter-spacing: -0.02em;
+        background: linear-gradient(135deg, var(--gold), #fde68a, var(--gold));
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 8px;
+      }
+      .winner-announce p { color: var(--text-secondary); font-size: 1.1rem; }
+      .winner-announce button { margin-top: 20px; }
+      @keyframes popIn {
+        from { opacity: 0; transform: scale(0.6) translateY(30px); }
+        to { opacity: 1; transform: scale(1) translateY(0); }
+      }
+
+      /* ─── Confetti canvas ─── */
+      #confettiCanvas {
+        position: fixed; inset: 0; z-index: 210;
+        pointer-events: none; width: 100%; height: 100%;
+      }
+
       @media (max-width: 960px) {
         .layout { grid-template-columns: 1fr; }
         .sidebar { border-left: none; border-top: 1px solid var(--border); }
@@ -336,10 +370,21 @@
       </div>
     </main>
 
+    <!-- Winner overlay -->
+    <div class="winner-overlay" id="winnerOverlay">
+      <div class="winner-announce">
+        <div class="crown">&#127942;</div>
+        <h2 id="winnerName">Winner!</h2>
+        <p id="winnerSubtext">Congratulations!</p>
+        <button class="btn-spin" id="dismissWinner">Continue</button>
+      </div>
+    </div>
+    <canvas id="confettiCanvas"></canvas>
+
     <!-- Firebase SDK (compat for simplicity in a single-file app) -->
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 
     <script>
       (function () {
@@ -352,10 +397,12 @@
         if (isJoinMode) { hostView.classList.add("hidden"); joinView.classList.add("active"); }
 
         let db = null; // Firebase database ref — null until config loads
+        let firebaseOk = false; // true only after a successful read/write
         let participants = [];   // {key, name, joinedAt}
         let winners = [];        // {key, name, wonAt}
         let spinning = false;
         let currentRotation = 0;
+        let localIdCounter = 0;
 
         const AVATAR_COLORS = ["#ef4444","#f97316","#eab308","#22c55e","#14b8a6","#06b6d4","#3b82f6","#6366f1","#8b5cf6","#d946ef","#ec4899","#f43f5e"];
         const SEGMENT_COLORS = [
@@ -397,6 +444,190 @@
         const joinGreeting = document.getElementById("joinGreeting");
         const joinParticipantCount = document.getElementById("joinParticipantCount");
 
+        /* ── Sound system (Web Audio API — no external files) ── */
+        var audioCtx = null;
+        function getAudioCtx() {
+          if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          return audioCtx;
+        }
+
+        function playTick() {
+          try {
+            var ctx = getAudioCtx();
+            var osc = ctx.createOscillator();
+            var gain = ctx.createGain();
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.type = "sine";
+            osc.frequency.value = 800 + Math.random() * 400;
+            gain.gain.setValueAtTime(0.12, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.06);
+          } catch (e) {}
+        }
+
+        function playFanfare() {
+          try {
+            var ctx = getAudioCtx();
+            var notes = [523, 659, 784, 1047]; // C5 E5 G5 C6
+            notes.forEach(function (freq, i) {
+              var osc = ctx.createOscillator();
+              var gain = ctx.createGain();
+              osc.connect(gain); gain.connect(ctx.destination);
+              osc.type = "triangle";
+              osc.frequency.value = freq;
+              var t = ctx.currentTime + i * 0.15;
+              gain.gain.setValueAtTime(0, t);
+              gain.gain.linearRampToValueAtTime(0.2, t + 0.05);
+              gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+              osc.start(t);
+              osc.stop(t + 0.5);
+            });
+            // Final chord
+            [523, 659, 784, 1047].forEach(function (freq) {
+              var osc = ctx.createOscillator();
+              var gain = ctx.createGain();
+              osc.connect(gain); gain.connect(ctx.destination);
+              osc.type = "sine";
+              osc.frequency.value = freq;
+              var t = ctx.currentTime + 0.65;
+              gain.gain.setValueAtTime(0, t);
+              gain.gain.linearRampToValueAtTime(0.15, t + 0.08);
+              gain.gain.exponentialRampToValueAtTime(0.001, t + 1.2);
+              osc.start(t);
+              osc.stop(t + 1.2);
+            });
+          } catch (e) {}
+        }
+
+        var tickInterval = null;
+        function startTickSound() {
+          stopTickSound();
+          var bpm = 20;
+          tickInterval = setInterval(function () {
+            playTick();
+            // Speed up ticks as we approach end
+          }, 1000 / bpm);
+          // Accelerate then decelerate ticks to match wheel
+          var phase = 0;
+          var accelInterval = setInterval(function () {
+            phase++;
+            if (phase < 20) {
+              clearInterval(tickInterval);
+              tickInterval = setInterval(playTick, Math.max(30, 200 - phase * 8));
+            } else if (phase < 50) {
+              clearInterval(tickInterval);
+              tickInterval = setInterval(playTick, Math.min(400, 40 + (phase - 20) * 12));
+            } else {
+              clearInterval(accelInterval);
+            }
+          }, 120);
+          // Store the accel interval to clean up
+          tickInterval._accel = accelInterval;
+        }
+        function stopTickSound() {
+          if (tickInterval) {
+            clearInterval(tickInterval);
+            if (tickInterval._accel) clearInterval(tickInterval._accel);
+            tickInterval = null;
+          }
+        }
+
+        /* ── Confetti system ── */
+        var confettiCanvas = document.getElementById("confettiCanvas");
+        var confettiCtx = confettiCanvas.getContext("2d");
+        var confettiPieces = [];
+        var confettiAnimId = null;
+
+        function resizeConfetti() {
+          confettiCanvas.width = window.innerWidth;
+          confettiCanvas.height = window.innerHeight;
+        }
+        window.addEventListener("resize", resizeConfetti);
+        resizeConfetti();
+
+        var CONFETTI_COLORS = [
+          "#fbbf24","#f59e0b","#ef4444","#ec4899","#8b5cf6",
+          "#3b82f6","#06b6d4","#22c55e","#f97316","#e879f9",
+          "#38bdf8","#a78bfa"
+        ];
+
+        function launchConfetti() {
+          confettiPieces = [];
+          for (var i = 0; i < 200; i++) {
+            confettiPieces.push({
+              x: Math.random() * confettiCanvas.width,
+              y: -20 - Math.random() * 300,
+              w: 6 + Math.random() * 8,
+              h: 4 + Math.random() * 6,
+              color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+              vx: (Math.random() - 0.5) * 6,
+              vy: 2 + Math.random() * 4,
+              angle: Math.random() * Math.PI * 2,
+              spin: (Math.random() - 0.5) * 0.2,
+              gravity: 0.06 + Math.random() * 0.04,
+              opacity: 1,
+              decay: 0.003 + Math.random() * 0.003
+            });
+          }
+          if (!confettiAnimId) animateConfetti();
+        }
+
+        function animateConfetti() {
+          confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+          var alive = false;
+          confettiPieces.forEach(function (p) {
+            if (p.opacity <= 0) return;
+            alive = true;
+            p.vy += p.gravity;
+            p.x += p.vx;
+            p.y += p.vy;
+            p.angle += p.spin;
+            p.vx *= 0.99;
+            if (p.y > confettiCanvas.height + 20) p.opacity = 0;
+            p.opacity -= p.decay;
+
+            confettiCtx.save();
+            confettiCtx.translate(p.x, p.y);
+            confettiCtx.rotate(p.angle);
+            confettiCtx.globalAlpha = Math.max(0, p.opacity);
+            confettiCtx.fillStyle = p.color;
+            confettiCtx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+            confettiCtx.restore();
+          });
+          if (alive) {
+            confettiAnimId = requestAnimationFrame(animateConfetti);
+          } else {
+            confettiAnimId = null;
+            confettiCtx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+          }
+        }
+
+        /* ── Winner overlay ── */
+        var winnerOverlay = document.getElementById("winnerOverlay");
+        var winnerNameEl = document.getElementById("winnerName");
+        var winnerSubtext = document.getElementById("winnerSubtext");
+        var dismissWinnerBtn = document.getElementById("dismissWinner");
+
+        function showWinnerCelebration(name, winnerNumber) {
+          winnerNameEl.textContent = name;
+          winnerSubtext.textContent = "Winner #" + winnerNumber + " — Congratulations!";
+          winnerOverlay.classList.add("active");
+          playFanfare();
+          launchConfetti();
+          // Second confetti burst
+          setTimeout(launchConfetti, 800);
+        }
+
+        function hideWinnerCelebration() {
+          winnerOverlay.classList.remove("active");
+        }
+
+        dismissWinnerBtn.onclick = hideWinnerCelebration;
+        winnerOverlay.addEventListener("click", function (e) {
+          if (e.target === winnerOverlay) hideWinnerCelebration();
+        });
+
         /* ── Helpers ── */
         function roomId() { return (roomInput ? roomInput.value.trim() : params.get("room")) || "berlin-2026"; }
         function normalize(n) { return n.trim().toLowerCase(); }
@@ -411,12 +642,29 @@
         }
 
         /* ── Firebase init ── */
+        // Firebase web API keys are PUBLIC by design (see https://firebase.google.com/docs/projects/api-keys).
+        // Security is enforced by Firebase Security Rules, not by hiding this config.
+        var FIREBASE_FALLBACK = {
+          apiKey: "AIzaSyD0LKYTfYvbR6JX__gSmb58W-SJp34SLYg",
+          authDomain: "wheel2-b49b8.firebaseapp.com",
+          databaseURL: "https://wheel2-b49b8-default-rtdb.europe-west1.firebasedatabase.app",
+          projectId: "wheel2-b49b8",
+          storageBucket: "wheel2-b49b8.firebasestorage.app",
+          messagingSenderId: "529515029202",
+          appId: "1:529515029202:web:daca77f2b6d1bc6450030b"
+        };
+
         async function initFirebase() {
           try {
-            const resp = await fetch("/api/firebase-config");
-            if (!resp.ok) throw new Error("no config");
-            const config = await resp.json();
-            if (config.error) throw new Error(config.error);
+            // Try server-injected config first (local dev), fall back to inline (GitHub Pages)
+            var config = FIREBASE_FALLBACK;
+            try {
+              var resp = await fetch("/api/firebase-config");
+              if (resp.ok) {
+                var serverConfig = await resp.json();
+                if (!serverConfig.error) config = serverConfig;
+              }
+            } catch (e) { /* use fallback */ }
             firebase.initializeApp(config);
             db = firebase.database();
             return true;
@@ -554,6 +802,9 @@
           spinBtn.disabled = true;
           pickFiveBtn.disabled = true;
 
+          // Start tick sounds
+          startTickSound();
+
           var index = participants.findIndex(function (p) { return p.key === winner.key; });
           var segment = (Math.PI * 2) / participants.length;
           var winnerCenter = index * segment + segment / 2;
@@ -566,8 +817,17 @@
 
           return new Promise(function (resolve) {
             setTimeout(function () {
-              // Write winner to Firebase
-              roomRef().child("winners").push({ name: winner.name, wonAt: firebase.database.ServerValue.TIMESTAMP });
+              stopTickSound();
+              // Write winner to Firebase or local
+              if (firebaseOk) {
+                roomRef().child("winners").push({ name: winner.name, wonAt: firebase.database.ServerValue.TIMESTAMP });
+              } else {
+                winners.push({ key: "local-w-" + Date.now(), name: winner.name, wonAt: Date.now() });
+                renderParticipants();
+                renderWinners();
+              }
+              // Show celebration
+              showWinnerCelebration(winner.name, winners.length + 1);
               spinning = false;
               spinBtn.disabled = false;
               pickFiveBtn.disabled = false;
@@ -580,10 +840,25 @@
           for (var i = winners.length; i < 5; i++) {
             var w = await spinOnce();
             if (!w) break;
+            // Wait for user to dismiss the overlay before next spin
+            await new Promise(function (resolve) {
+              var handler = function () {
+                dismissWinnerBtn.removeEventListener("click", handler);
+                resolve();
+              };
+              dismissWinnerBtn.addEventListener("click", handler);
+            });
           }
         }
 
-        /* ── Host: add name (with duplicate check) ── */
+        /* ── Host: add name (with duplicate check) — works locally, syncs to Firebase if available ── */
+        function addNameLocally(name) {
+          var key = "local-" + (++localIdCounter) + "-" + Date.now();
+          participants.push({ key: key, name: name, joinedAt: Date.now() });
+          renderParticipants();
+          drawWheel(currentRotation);
+        }
+
         function addNameFromHost() {
           var name = addNameInput.value.trim();
           addNameError.textContent = "";
@@ -592,7 +867,11 @@
             addNameError.textContent = "\"" + name + "\" is already in the wheel or is a winner.";
             return;
           }
-          roomRef().child("participants").push({ name: name, joinedAt: firebase.database.ServerValue.TIMESTAMP });
+          if (firebaseOk) {
+            roomRef().child("participants").push({ name: name, joinedAt: firebase.database.ServerValue.TIMESTAMP });
+          } else {
+            addNameLocally(name);
+          }
           addNameInput.value = "";
           addNameInput.focus();
         }
@@ -606,10 +885,30 @@
           if (unsubParticipants) { unsubParticipants(); unsubParticipants = null; }
           if (unsubWinners) { unsubWinners(); unsubWinners = null; }
 
+          if (!db) {
+            // No Firebase — run in local-only mode
+            firebaseOk = false;
+            setConnected(true);
+            connStatus.textContent = "Local mode";
+            updateJoinArtifacts();
+            return;
+          }
+
           var ref = roomRef();
+
+          // Test connection with a read
+          ref.once("value").then(function () {
+            firebaseOk = true;
+            connStatus.textContent = "Connected (Firebase)";
+          }).catch(function (err) {
+            firebaseOk = false;
+            connStatus.textContent = "Local mode (Firebase error)";
+            console.warn("Firebase read failed:", err.message);
+          });
 
           var pRef = ref.child("participants");
           function onParticipants(snap) {
+            firebaseOk = true;
             participants = [];
             var val = snap.val();
             if (val) {
@@ -620,7 +919,11 @@
             renderParticipants();
             drawWheel(currentRotation);
           }
-          pRef.on("value", onParticipants);
+          pRef.on("value", onParticipants, function (err) {
+            console.warn("Firebase participants listener error:", err.message);
+            firebaseOk = false;
+            connStatus.textContent = "Local mode (Firebase error)";
+          });
           unsubParticipants = function () { pRef.off("value", onParticipants); };
 
           var wRef = ref.child("winners");
@@ -744,17 +1047,19 @@
 
             if (!ok) {
               firebaseBanner.classList.add("active");
-              connStatus.textContent = "Firebase not configured";
-              return;
+              firebaseBanner.textContent = "Firebase not configured — running in local mode. Names added here work, but mobile QR join requires Firebase.";
             }
 
             connectBtn.onclick = function () { subscribeToRoom(); };
             spinBtn.onclick = function () { spinOnce(); };
             pickFiveBtn.onclick = function () { pickFive(); };
-            resetWinnersBtn.onclick = function () { roomRef().child("winners").remove(); };
+            resetWinnersBtn.onclick = function () {
+              if (firebaseOk) { roomRef().child("winners").remove(); }
+              else { winners = []; renderParticipants(); renderWinners(); drawWheel(currentRotation); }
+            };
             clearPeopleBtn.onclick = function () {
-              roomRef().child("participants").remove();
-              roomRef().child("winners").remove();
+              if (firebaseOk) { roomRef().child("participants").remove(); roomRef().child("winners").remove(); }
+              else { participants = []; winners = []; renderParticipants(); renderWinners(); drawWheel(currentRotation); }
             };
             copyBtn.onclick = function () {
               navigator.clipboard.writeText(joinUrlInput.value).then(function () {
