@@ -1,0 +1,5 @@
+node_modules/
+firebase-config.json
+.env
+test-results/
+playwright-report/

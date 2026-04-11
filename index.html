@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Global AI Community - Wheel of Names</title>
+    <script>
+      (function () {
+        var p = new URLSearchParams(window.location.search);
+        if (p.get("mode") === "join") document.documentElement.classList.add("join-mode");
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg-primary: #0f172a;
+        --bg-secondary: #1e293b;
+        --bg-card: rgba(30, 41, 59, 0.85);
+        --bg-input: rgba(15, 23, 42, 0.9);
+        --border: rgba(148, 163, 184, 0.15);
+        --border-focus: rgba(56, 189, 248, 0.5);
+        --text-primary: #f1f5f9;
+        --text-secondary: #94a3b8;
+        --text-muted: #64748b;
+        --accent: #38bdf8;
+        --accent-hover: #0ea5e9;
+        --accent-glow: rgba(56, 189, 248, 0.2);
+        --gold: #fbbf24;
+        --gold-glow: rgba(251, 191, 36, 0.3);
+        --danger: #ef4444;
+        --success: #22c55e;
+        --surface-hover: rgba(56, 189, 248, 0.08);
+      }
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body {
+        min-height: 100vh;
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        -webkit-font-smoothing: antialiased;
+      }
+      body {
+        background:
+          radial-gradient(ellipse at 20% 0%, rgba(56,189,248,0.08) 0%, transparent 50%),
+          radial-gradient(ellipse at 80% 100%, rgba(139,92,246,0.06) 0%, transparent 50%),
+          var(--bg-primary);
+      }
+
+      /* ─── Top Bar ─── */
+      .topbar {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 16px 32px;
+        border-bottom: 1px solid var(--border);
+        backdrop-filter: blur(12px);
+        background: rgba(15,23,42,0.8);
+        position: sticky; top: 0; z-index: 100;
+      }
+      .topbar-brand { display: flex; align-items: center; gap: 12px; }
+      .topbar-logo {
+        width: 36px; height: 36px;
+        background: linear-gradient(135deg, var(--accent), #818cf8);
+        border-radius: 10px; display: grid; place-items: center;
+        font-weight: 900; font-size: 18px; color: white;
+      }
+      .topbar-title { font-weight: 700; font-size: 1rem; letter-spacing: -0.01em; }
+      .topbar-title span { color: var(--accent); }
+      .topbar-badge {
+        font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+        letter-spacing: 0.06em; color: var(--accent);
+        background: var(--accent-glow); border: 1px solid rgba(56,189,248,0.2);
+        border-radius: 999px; padding: 6px 14px;
+      }
+
+      /* ─── Layout ─── */
+      .layout { display: grid; grid-template-columns: 1fr 400px; gap: 0; min-height: calc(100vh - 69px); }
+      .main-area { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px; position: relative; }
+      .sidebar {
+        border-left: 1px solid var(--border);
+        background: var(--bg-card); backdrop-filter: blur(12px);
+        display: flex; flex-direction: column; overflow: hidden;
+      }
+
+      /* ─── Wheel ─── */
+      .wheel-container { position: relative; width: min(520px, 70vw); aspect-ratio: 1; display: grid; place-items: center; }
+      .wheel-pointer { position: absolute; top: -4px; left: 50%; transform: translateX(-50%); z-index: 10; filter: drop-shadow(0 4px 12px rgba(251,191,36,0.4)); }
+      .wheel-pointer svg { width: 40px; height: 48px; }
+      .wheel-ring {
+        position: absolute; inset: -6px; border-radius: 50%;
+        border: 3px solid rgba(148,163,184,0.12);
+        box-shadow: 0 0 40px rgba(56,189,248,0.08), inset 0 0 40px rgba(56,189,248,0.04);
+      }
+      canvas#wheel { width: 100%; height: 100%; border-radius: 50%; transition: transform 6s cubic-bezier(0.15, 0.85, 0.25, 1); }
+      .wheel-center-dot {
+        position: absolute; width: 56px; height: 56px; border-radius: 50%;
+        background: var(--bg-primary); border: 3px solid rgba(148,163,184,0.2);
+        box-shadow: 0 0 24px rgba(56,189,248,0.15); z-index: 5;
+      }
+      .wheel-empty-text { position: absolute; text-align: center; color: var(--text-muted); font-size: 0.95rem; line-height: 1.5; pointer-events: none; }
+
+      .wheel-actions { display: flex; gap: 10px; margin-top: 28px; flex-wrap: wrap; justify-content: center; }
+
+      /* ─── Buttons ─── */
+      button {
+        font-family: inherit; font-weight: 600; font-size: 0.875rem;
+        border: 1px solid transparent; border-radius: 10px; padding: 10px 20px;
+        cursor: pointer; transition: all 0.15s ease;
+        display: inline-flex; align-items: center; gap: 6px;
+      }
+      .btn-primary { background: var(--accent); color: var(--bg-primary); border-color: var(--accent); }
+      .btn-primary:hover:not(:disabled) { background: var(--accent-hover); box-shadow: 0 0 20px var(--accent-glow); }
+      .btn-spin {
+        background: linear-gradient(135deg, var(--gold), #f59e0b);
+        color: #1a1207; border: none; font-size: 1rem; padding: 14px 32px;
+        border-radius: 14px; font-weight: 700; letter-spacing: 0.02em;
+      }
+      .btn-spin:hover:not(:disabled) { box-shadow: 0 0 28px var(--gold-glow); transform: translateY(-1px); }
+      .btn-ghost { background: transparent; color: var(--text-secondary); border-color: var(--border); }
+      .btn-ghost:hover:not(:disabled) { background: var(--surface-hover); color: var(--text-primary); border-color: var(--border-focus); }
+      .btn-danger { background: transparent; color: var(--danger); border-color: rgba(239,68,68,0.25); }
+      .btn-danger:hover:not(:disabled) { background: rgba(239,68,68,0.1); }
+      .btn-sm { padding: 6px 12px; font-size: 0.8rem; border-radius: 8px; }
+      button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+      /* ─── Sidebar ─── */
+      .sidebar-section { padding: 20px 24px; border-bottom: 1px solid var(--border); }
+      .sidebar-section:last-child { border-bottom: none; flex: 1; overflow-y: auto; }
+      .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+      .section-title { font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+      .section-count { font-size: 0.8rem; font-weight: 600; color: var(--accent); background: var(--accent-glow); border-radius: 999px; padding: 2px 10px; }
+
+      .conn-status { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text-secondary); }
+      .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+      .conn-dot.online { background: var(--success); box-shadow: 0 0 8px rgba(34,197,94,0.4); }
+
+      .qr-row { display: flex; gap: 16px; align-items: flex-start; }
+      .qr-box { background: white; border-radius: 10px; padding: 8px; width: 120px; height: 120px; flex-shrink: 0; display: grid; place-items: center; }
+      .qr-info { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+      .url-copy-row { display: flex; gap: 6px; }
+
+      input {
+        font-family: inherit; font-size: 0.85rem;
+        background: var(--bg-input); color: var(--text-primary);
+        border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px;
+        outline: none; transition: border-color 0.15s;
+      }
+      input:focus { border-color: var(--border-focus); }
+      .url-input { flex: 1; font-size: 0.75rem; color: var(--text-muted); min-width: 0; }
+
+      .add-name-row { display: flex; gap: 8px; }
+      .add-name-row input { flex: 1; }
+
+      .participant-list { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+      .participant-list li {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 8px 12px; border-radius: 8px; font-size: 0.9rem; transition: background 0.1s;
+      }
+      .participant-list li:hover { background: var(--surface-hover); }
+      .participant-name { display: flex; align-items: center; gap: 8px; }
+      .participant-avatar {
+        width: 28px; height: 28px; border-radius: 50%;
+        display: grid; place-items: center;
+        font-size: 0.7rem; font-weight: 700; color: white;
+      }
+      .winner-badge {
+        font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.04em; color: #92400e;
+        background: var(--gold); border-radius: 999px; padding: 3px 10px;
+      }
+      .winner-list li { background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.12); }
+      .winner-rank { font-weight: 800; font-size: 0.95rem; color: var(--gold); min-width: 24px; }
+
+      .footnote { font-size: 0.78rem; color: var(--text-muted); padding: 12px 24px; border-top: 1px solid var(--border); line-height: 1.5; }
+
+      /* ─── Join View (mobile) ─── */
+      #joinView { display: none; min-height: 100vh; }
+      #joinView.active { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+      .join-card {
+        background: var(--bg-card); border: 1px solid var(--border);
+        border-radius: 20px; padding: 40px 32px; width: min(420px, 100%);
+        backdrop-filter: blur(12px); text-align: center;
+      }
+      .join-card h1 { font-size: 1.6rem; font-weight: 800; margin-bottom: 6px; letter-spacing: -0.02em; }
+      .join-card .sub { color: var(--text-secondary); font-size: 0.95rem; margin-bottom: 28px; }
+      .join-card input { width: 100%; padding: 14px 16px; font-size: 1rem; border-radius: 12px; margin-bottom: 12px; text-align: center; }
+      .join-card button { width: 100%; padding: 14px; font-size: 1rem; border-radius: 12px; margin-bottom: 16px; }
+      .join-status { font-size: 0.88rem; color: var(--text-secondary); min-height: 1.4em; }
+      .join-status.success { color: var(--success); }
+      .join-status.error { color: var(--danger); }
+      .join-brand { margin-top: 32px; font-size: 0.8rem; color: var(--text-muted); }
+
+      /* success state */
+      .join-success { display: none; text-align: center; }
+      .join-success.active { display: block; }
+      .join-success .check-icon { font-size: 3rem; margin-bottom: 12px; }
+      .join-success h2 { font-size: 1.3rem; font-weight: 700; margin-bottom: 8px; }
+      .join-success p { color: var(--text-secondary); font-size: 0.95rem; }
+
+      .join-form.hide { display: none; }
+
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+      .layout, #joinView.active { animation: fadeIn 0.35s ease both; }
+
+      .hidden { display: none !important; }
+      .join-mode #hostView { display: none !important; }
+      .join-mode #joinView { display: flex !important; }
+
+      /* ─── Firebase status banner ─── */
+      .firebase-banner {
+        background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.25);
+        color: #fca5a5; padding: 10px 24px; font-size: 0.85rem; text-align: center;
+        display: none;
+      }
+      .firebase-banner.active { display: block; }
+
+      @media (max-width: 960px) {
+        .layout { grid-template-columns: 1fr; }
+        .sidebar { border-left: none; border-top: 1px solid var(--border); }
+        .topbar { padding: 12px 16px; }
+        .main-area { padding: 24px 16px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="hostView">
+      <nav class="topbar">
+        <div class="topbar-brand">
+          <div class="topbar-logo">AI</div>
+          <div class="topbar-title"><span>Global AI</span> Community</div>
+        </div>
+        <div class="topbar-badge">AgentCon Berlin 2026</div>
+      </nav>
+      <div class="firebase-banner" id="firebaseBanner">Firebase not configured. Create <code>firebase-config.json</code> from the example file.</div>
+
+      <div class="layout">
+        <section class="main-area">
+          <div class="wheel-container">
+            <div class="wheel-pointer">
+              <svg viewBox="0 0 40 48" fill="none">
+                <path d="M20 48L4 8C2.5 4.5 5 0 9 0H31C35 0 37.5 4.5 36 8L20 48Z" fill="url(#ptr)"/>
+                <circle cx="20" cy="12" r="5" fill="#fffbeb" opacity="0.9"/>
+                <defs><linearGradient id="ptr" x1="20" y1="0" x2="20" y2="48"><stop stop-color="#fbbf24"/><stop offset="1" stop-color="#d97706"/></linearGradient></defs>
+              </svg>
+            </div>
+            <div class="wheel-ring"></div>
+            <canvas id="wheel" width="900" height="900"></canvas>
+            <div class="wheel-center-dot"></div>
+            <div class="wheel-empty-text" id="emptyText">Add names or share QR to begin</div>
+          </div>
+          <div class="wheel-actions">
+            <button id="spinBtn" class="btn-spin" disabled>Spin the Wheel</button>
+            <button id="pickFiveBtn" class="btn-ghost" disabled>Pick 5 Winners</button>
+            <button id="resetWinnersBtn" class="btn-ghost" disabled>Reset Winners</button>
+          </div>
+        </section>
+
+        <aside class="sidebar">
+          <div class="sidebar-section">
+            <div class="section-header">
+              <span class="section-title">Room</span>
+              <div class="conn-status">
+                <div class="conn-dot" id="connDot"></div>
+                <span id="connStatus">Initializing...</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:12px">
+              <input id="roomInput" value="berlin-2026" maxlength="30" style="flex:1" aria-label="Room" placeholder="Room ID" />
+              <button id="connectBtn" class="btn-primary btn-sm">Connect</button>
+            </div>
+            <div class="qr-row">
+              <div class="qr-box"><canvas id="qrCanvas"></canvas></div>
+              <div class="qr-info">
+                <div style="font-size:0.78rem;color:var(--text-muted)">Scan to join</div>
+                <div class="url-copy-row">
+                  <input id="joinUrl" class="url-input" readonly aria-label="Join URL" />
+                  <button id="copyBtn" class="btn-ghost btn-sm">Copy</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="section-header"><span class="section-title">Add Participant</span></div>
+            <div class="add-name-row">
+              <input id="addNameInput" placeholder="Enter a name..." maxlength="40" data-testid="addNameInput" />
+              <button id="addNameBtn" class="btn-primary btn-sm">Add</button>
+            </div>
+            <div id="addNameError" style="color:var(--danger);font-size:0.8rem;margin-top:6px;min-height:1.2em"></div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="section-header">
+              <span class="section-title">Winners</span>
+              <span class="section-count" id="winnerCount">0 / 5</span>
+            </div>
+            <ul class="participant-list winner-list" id="winnerList"></ul>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="section-header">
+              <span class="section-title">Participants</span>
+              <span class="section-count" id="count">0</span>
+            </div>
+            <ul class="participant-list" id="participantList"></ul>
+            <div style="margin-top:12px;text-align:center">
+              <button id="clearPeopleBtn" class="btn-danger btn-sm">Clear All Participants</button>
+            </div>
+          </div>
+
+          <div class="footnote">No ads. No trackers. No cookies. Use your LAN IP so phones on the same Wi-Fi can scan the QR.</div>
+        </aside>
+      </div>
+    </div>
+
+    <main id="joinView">
+      <div class="join-card">
+        <div class="topbar-logo" style="margin:0 auto 16px;width:48px;height:48px;font-size:22px">AI</div>
+        <h1>Join the Wheel</h1>
+        <p class="sub">Enter your name to participate</p>
+
+        <div class="join-form" id="joinForm">
+          <input id="nameInput" placeholder="Your name" maxlength="40" data-testid="nameInput" />
+          <button id="joinBtn" class="btn-primary" data-testid="joinBtn">Join Now</button>
+          <div class="join-status" id="joinStatus">Loading...</div>
+        </div>
+
+        <div class="join-success" id="joinSuccess">
+          <div class="check-icon">&#10003;</div>
+          <h2 id="joinGreeting">You're in!</h2>
+          <p>Sit back and wait for the wheel to spin. Good luck!</p>
+          <p style="margin-top:12px;font-size:0.85rem;color:var(--text-muted)" id="joinParticipantCount"></p>
+        </div>
+
+        <div class="join-brand">Global AI Community &middot; AgentCon Berlin 2026</div>
+      </div>
+    </main>
+
+    <!-- Firebase SDK (compat for simplicity in a single-file app) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+
+    <script>
+      (function () {
+        /* ── State ── */
+        const params = new URLSearchParams(location.search);
+        const isJoinMode = params.get("mode") === "join";
+
+        const hostView = document.getElementById("hostView");
+        const joinView = document.getElementById("joinView");
+        if (isJoinMode) { hostView.classList.add("hidden"); joinView.classList.add("active"); }
+
+        let db = null; // Firebase database ref — null until config loads
+        let participants = [];   // {key, name, joinedAt}
+        let winners = [];        // {key, name, wonAt}
+        let spinning = false;
+        let currentRotation = 0;
+
+        const AVATAR_COLORS = ["#ef4444","#f97316","#eab308","#22c55e","#14b8a6","#06b6d4","#3b82f6","#6366f1","#8b5cf6","#d946ef","#ec4899","#f43f5e"];
+        const SEGMENT_COLORS = [
+          ["#3b82f6","#2563eb"],["#8b5cf6","#7c3aed"],["#06b6d4","#0891b2"],
+          ["#10b981","#059669"],["#f59e0b","#d97706"],["#ef4444","#dc2626"],
+          ["#ec4899","#db2777"],["#6366f1","#4f46e5"],["#14b8a6","#0d9488"],
+          ["#f97316","#ea580c"],["#84cc16","#65a30d"],["#e879f9","#c026d3"]
+        ];
+
+        /* ── DOM refs ── */
+        const wheel = document.getElementById("wheel");
+        const wheelCtx = wheel.getContext("2d");
+        const emptyText = document.getElementById("emptyText");
+        const roomInput = document.getElementById("roomInput");
+        const connectBtn = document.getElementById("connectBtn");
+        const spinBtn = document.getElementById("spinBtn");
+        const pickFiveBtn = document.getElementById("pickFiveBtn");
+        const resetWinnersBtn = document.getElementById("resetWinnersBtn");
+        const clearPeopleBtn = document.getElementById("clearPeopleBtn");
+        const participantList = document.getElementById("participantList");
+        const winnerList = document.getElementById("winnerList");
+        const winnerCountEl = document.getElementById("winnerCount");
+        const countEl = document.getElementById("count");
+        const connDot = document.getElementById("connDot");
+        const connStatus = document.getElementById("connStatus");
+        const joinUrlInput = document.getElementById("joinUrl");
+        const copyBtn = document.getElementById("copyBtn");
+        const qrCanvas = document.getElementById("qrCanvas");
+        const addNameInput = document.getElementById("addNameInput");
+        const addNameBtn = document.getElementById("addNameBtn");
+        const addNameError = document.getElementById("addNameError");
+        const firebaseBanner = document.getElementById("firebaseBanner");
+
+        const nameInput = document.getElementById("nameInput");
+        const joinBtn = document.getElementById("joinBtn");
+        const joinStatus = document.getElementById("joinStatus");
+        const joinForm = document.getElementById("joinForm");
+        const joinSuccess = document.getElementById("joinSuccess");
+        const joinGreeting = document.getElementById("joinGreeting");
+        const joinParticipantCount = document.getElementById("joinParticipantCount");
+
+        /* ── Helpers ── */
+        function roomId() { return (roomInput ? roomInput.value.trim() : params.get("room")) || "berlin-2026"; }
+        function normalize(n) { return n.trim().toLowerCase(); }
+        function avatarColor(name) { let h = 0; for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h); return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]; }
+        function initials(name) { const p = name.trim().split(/\s+/); return p.length >= 2 ? (p[0][0] + p[p.length-1][0]).toUpperCase() : name.slice(0,2).toUpperCase(); }
+
+        function roomRef() { return db.ref("rooms/" + roomId()); }
+
+        function nameExistsInList(name, list) {
+          const n = normalize(name);
+          return list.some(function (p) { return normalize(p.name) === n; });
+        }
+
+        /* ── Firebase init ── */
+        async function initFirebase() {
+          try {
+            const resp = await fetch("/api/firebase-config");
+            if (!resp.ok) throw new Error("no config");
+            const config = await resp.json();
+            if (config.error) throw new Error(config.error);
+            firebase.initializeApp(config);
+            db = firebase.database();
+            return true;
+          } catch (e) {
+            console.warn("Firebase init failed:", e.message);
+            return false;
+          }
+        }
+
+        /* ── QR / join link ── */
+        function joinLinkForRoom(id) {
+          var u = new URL(location.href);
+          u.search = ""; u.hash = "";
+          u.searchParams.set("mode", "join");
+          u.searchParams.set("room", id);
+          return u.toString();
+        }
+
+        function updateJoinArtifacts() {
+          var url = joinLinkForRoom(roomId());
+          joinUrlInput.value = url;
+          if (window.QRCode && QRCode.toCanvas) {
+            QRCode.toCanvas(qrCanvas, url, { width: 104, margin: 1, color: { dark: "#0f172a", light: "#FFFFFF" } });
+          }
+        }
+
+        /* ── Rendering ── */
+        function setConnected(ok) {
+          connDot.classList.toggle("online", ok);
+          connStatus.textContent = ok ? "Connected" : "Disconnected";
+          spinBtn.disabled = !ok;
+          pickFiveBtn.disabled = !ok;
+          clearPeopleBtn.disabled = !ok;
+          addNameBtn.disabled = !ok;
+        }
+
+        function renderParticipants() {
+          countEl.textContent = String(participants.length);
+          participantList.innerHTML = "";
+          var winnerSet = {};
+          winners.forEach(function (w) { winnerSet[normalize(w.name)] = true; });
+
+          participants.forEach(function (p) {
+            var li = document.createElement("li");
+            var left = document.createElement("span"); left.className = "participant-name";
+            var av = document.createElement("span"); av.className = "participant-avatar"; av.style.background = avatarColor(p.name); av.textContent = initials(p.name);
+            left.appendChild(av);
+            var ns = document.createElement("span"); ns.textContent = p.name; left.appendChild(ns);
+            li.appendChild(left);
+
+            var right = document.createElement("div"); right.style.cssText = "display:flex;align-items:center;gap:6px";
+            if (winnerSet[normalize(p.name)]) {
+              var tag = document.createElement("span"); tag.className = "winner-badge"; tag.textContent = "Winner";
+              right.appendChild(tag);
+            }
+            var rm = document.createElement("button"); rm.className = "btn-danger btn-sm"; rm.textContent = "x"; rm.style.cssText = "padding:4px 8px;font-size:0.75rem";
+            rm.onclick = function () { roomRef().child("participants").child(p.key).remove(); };
+            right.appendChild(rm);
+            li.appendChild(right);
+            participantList.appendChild(li);
+          });
+          emptyText.style.display = participants.length === 0 ? "block" : "none";
+        }
+
+        function renderWinners() {
+          winnerList.innerHTML = "";
+          winners.forEach(function (w, idx) {
+            var li = document.createElement("li");
+            var left = document.createElement("span"); left.className = "participant-name";
+            var rank = document.createElement("span"); rank.className = "winner-rank"; rank.textContent = "#" + (idx + 1);
+            left.appendChild(rank);
+            var av = document.createElement("span"); av.className = "participant-avatar"; av.style.background = avatarColor(w.name); av.textContent = initials(w.name);
+            left.appendChild(av);
+            var ns = document.createElement("span"); ns.textContent = w.name; left.appendChild(ns);
+            li.appendChild(left);
+            var badge = document.createElement("span"); badge.className = "winner-badge"; badge.textContent = "Winner";
+            li.appendChild(badge);
+            winnerList.appendChild(li);
+          });
+          winnerCountEl.textContent = winners.length + " / 5";
+          resetWinnersBtn.disabled = winners.length === 0;
+        }
+
+        function drawWheel(rotationRad) {
+          rotationRad = rotationRad || 0;
+          var names = participants.map(function (p) { return p.name; });
+          var total = Math.max(names.length, 1);
+          var center = wheel.width / 2;
+          var radius = center - 12;
+          var arc = (Math.PI * 2) / total;
+
+          wheelCtx.clearRect(0, 0, wheel.width, wheel.height);
+          if (names.length === 0) {
+            wheelCtx.beginPath(); wheelCtx.arc(center, center, radius, 0, Math.PI * 2);
+            wheelCtx.fillStyle = "#1e293b"; wheelCtx.fill();
+            wheelCtx.strokeStyle = "rgba(148,163,184,0.1)"; wheelCtx.lineWidth = 2; wheelCtx.stroke();
+            return;
+          }
+
+          wheelCtx.save(); wheelCtx.translate(center, center); wheelCtx.rotate(rotationRad);
+          for (var i = 0; i < total; i++) {
+            var start = i * arc, end = start + arc;
+            var colors = SEGMENT_COLORS[i % SEGMENT_COLORS.length];
+            wheelCtx.beginPath(); wheelCtx.moveTo(0, 0); wheelCtx.arc(0, 0, radius, start, end); wheelCtx.closePath();
+            var mid = start + arc / 2;
+            var grad = wheelCtx.createLinearGradient(Math.cos(mid)*radius*0.1, Math.sin(mid)*radius*0.1, Math.cos(mid)*radius*0.85, Math.sin(mid)*radius*0.85);
+            grad.addColorStop(0, colors[0]); grad.addColorStop(1, colors[1]);
+            wheelCtx.fillStyle = grad; wheelCtx.fill();
+            wheelCtx.strokeStyle = "rgba(255,255,255,0.15)"; wheelCtx.lineWidth = 1.5; wheelCtx.stroke();
+            var label = names[i] || "";
+            wheelCtx.save(); wheelCtx.rotate(start + arc / 2);
+            wheelCtx.textAlign = "right"; wheelCtx.textBaseline = "middle";
+            wheelCtx.font = "700 28px Inter, sans-serif";
+            wheelCtx.fillStyle = "rgba(0,0,0,0.25)"; wheelCtx.fillText(label.slice(0, 18), radius - 28, 2);
+            wheelCtx.fillStyle = "#ffffff"; wheelCtx.fillText(label.slice(0, 18), radius - 28, 0);
+            wheelCtx.restore();
+          }
+          wheelCtx.restore();
+        }
+
+        /* ── Spin logic ── */
+        function eligibleParticipants() {
+          var winnerSet = {};
+          winners.forEach(function (w) { winnerSet[normalize(w.name)] = true; });
+          return participants.filter(function (p) { return !winnerSet[normalize(p.name)]; });
+        }
+
+        function spinOnce() {
+          if (spinning || participants.length === 0) return Promise.resolve(null);
+          var eligible = eligibleParticipants();
+          if (eligible.length === 0) return Promise.resolve(null);
+
+          var winner = eligible[Math.floor(Math.random() * eligible.length)];
+          spinning = true;
+          spinBtn.disabled = true;
+          pickFiveBtn.disabled = true;
+
+          var index = participants.findIndex(function (p) { return p.key === winner.key; });
+          var segment = (Math.PI * 2) / participants.length;
+          var winnerCenter = index * segment + segment / 2;
+          var targetTop = Math.PI * 1.5;
+          var extraSpins = Math.PI * 2 * (4 + Math.random() * 2);
+          var rotateBy = extraSpins + (targetTop - winnerCenter - currentRotation % (Math.PI * 2));
+          currentRotation += rotateBy;
+          var degrees = (currentRotation * 180) / Math.PI;
+          wheel.style.transform = "rotate(" + degrees + "deg)";
+
+          return new Promise(function (resolve) {
+            setTimeout(function () {
+              // Write winner to Firebase
+              roomRef().child("winners").push({ name: winner.name, wonAt: firebase.database.ServerValue.TIMESTAMP });
+              spinning = false;
+              spinBtn.disabled = false;
+              pickFiveBtn.disabled = false;
+              resolve(winner);
+            }, 6200);
+          });
+        }
+
+        async function pickFive() {
+          for (var i = winners.length; i < 5; i++) {
+            var w = await spinOnce();
+            if (!w) break;
+          }
+        }
+
+        /* ── Host: add name (with duplicate check) ── */
+        function addNameFromHost() {
+          var name = addNameInput.value.trim();
+          addNameError.textContent = "";
+          if (!name) return;
+          if (nameExistsInList(name, participants) || nameExistsInList(name, winners)) {
+            addNameError.textContent = "\"" + name + "\" is already in the wheel or is a winner.";
+            return;
+          }
+          roomRef().child("participants").push({ name: name, joinedAt: firebase.database.ServerValue.TIMESTAMP });
+          addNameInput.value = "";
+          addNameInput.focus();
+        }
+
+        /* ── Host: subscribe to Firebase ── */
+        var unsubParticipants = null;
+        var unsubWinners = null;
+
+        function subscribeToRoom() {
+          // Unsub previous
+          if (unsubParticipants) { unsubParticipants(); unsubParticipants = null; }
+          if (unsubWinners) { unsubWinners(); unsubWinners = null; }
+
+          var ref = roomRef();
+
+          var pRef = ref.child("participants");
+          function onParticipants(snap) {
+            participants = [];
+            var val = snap.val();
+            if (val) {
+              Object.keys(val).forEach(function (k) {
+                participants.push({ key: k, name: val[k].name, joinedAt: val[k].joinedAt });
+              });
+            }
+            renderParticipants();
+            drawWheel(currentRotation);
+          }
+          pRef.on("value", onParticipants);
+          unsubParticipants = function () { pRef.off("value", onParticipants); };
+
+          var wRef = ref.child("winners");
+          function onWinners(snap) {
+            winners = [];
+            var val = snap.val();
+            if (val) {
+              Object.keys(val).forEach(function (k) {
+                winners.push({ key: k, name: val[k].name, wonAt: val[k].wonAt });
+              });
+            }
+            renderParticipants(); // re-render to show winner badges
+            renderWinners();
+            drawWheel(currentRotation);
+          }
+          wRef.on("value", onWinners);
+          unsubWinners = function () { wRef.off("value", onWinners); };
+
+          setConnected(true);
+          updateJoinArtifacts();
+        }
+
+        /* ── Join view (mobile) ── */
+        function setupJoinView() {
+          var room = params.get("room") || "berlin-2026";
+          var submitted = false;
+
+          // Check localStorage to prevent re-joining on same device
+          var storageKey = "wheel-joined-" + room;
+          var previousName = localStorage.getItem(storageKey);
+          if (previousName) {
+            showJoinSuccess(previousName);
+            listenJoinCount(room);
+            return;
+          }
+
+          joinStatus.textContent = "Ready to join.";
+          joinStatus.className = "join-status";
+          joinBtn.disabled = false;
+
+          function submitJoin() {
+            if (submitted) return;
+            var name = nameInput.value.trim();
+            if (!name) {
+              joinStatus.textContent = "Please enter your name.";
+              joinStatus.className = "join-status error";
+              return;
+            }
+
+            joinStatus.textContent = "Checking...";
+            joinStatus.className = "join-status";
+            joinBtn.disabled = true;
+
+            // Check duplicates across participants AND winners
+            var ref = db.ref("rooms/" + room);
+            ref.once("value").then(function (snap) {
+              var data = snap.val() || {};
+              var allNames = [];
+              if (data.participants) {
+                Object.values(data.participants).forEach(function (p) { allNames.push(normalize(p.name)); });
+              }
+              if (data.winners) {
+                Object.values(data.winners).forEach(function (w) { allNames.push(normalize(w.name)); });
+              }
+
+              if (allNames.indexOf(normalize(name)) !== -1) {
+                joinStatus.textContent = "\"" + name + "\" is already taken. Try a different name.";
+                joinStatus.className = "join-status error";
+                joinBtn.disabled = false;
+                return;
+              }
+
+              // Add to Firebase
+              ref.child("participants").push({ name: name, joinedAt: firebase.database.ServerValue.TIMESTAMP }).then(function () {
+                submitted = true;
+                localStorage.setItem(storageKey, name);
+                showJoinSuccess(name);
+                listenJoinCount(room);
+              }).catch(function () {
+                joinStatus.textContent = "Failed to join. Please try again.";
+                joinStatus.className = "join-status error";
+                joinBtn.disabled = false;
+              });
+            });
+          }
+
+          joinBtn.onclick = submitJoin;
+          nameInput.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") { e.preventDefault(); submitJoin(); }
+          });
+        }
+
+        function showJoinSuccess(name) {
+          joinForm.classList.add("hide");
+          joinSuccess.classList.add("active");
+          joinGreeting.textContent = "You're in, " + name + "!";
+        }
+
+        function listenJoinCount(room) {
+          db.ref("rooms/" + room + "/participants").on("value", function (snap) {
+            var count = snap.numChildren();
+            joinParticipantCount.textContent = count + " participant" + (count !== 1 ? "s" : "") + " in room.";
+          });
+        }
+
+        /* ── Boot ── */
+        async function boot() {
+          var ok = await initFirebase();
+
+          if (isJoinMode) {
+            if (!ok) {
+              joinStatus.textContent = "Service unavailable. Ask the presenter to check setup.";
+              joinStatus.className = "join-status error";
+              joinBtn.disabled = true;
+              return;
+            }
+            setupJoinView();
+          } else {
+            drawWheel();
+            updateJoinArtifacts();
+
+            if (!ok) {
+              firebaseBanner.classList.add("active");
+              connStatus.textContent = "Firebase not configured";
+              return;
+            }
+
+            connectBtn.onclick = function () { subscribeToRoom(); };
+            spinBtn.onclick = function () { spinOnce(); };
+            pickFiveBtn.onclick = function () { pickFive(); };
+            resetWinnersBtn.onclick = function () { roomRef().child("winners").remove(); };
+            clearPeopleBtn.onclick = function () {
+              roomRef().child("participants").remove();
+              roomRef().child("winners").remove();
+            };
+            copyBtn.onclick = function () {
+              navigator.clipboard.writeText(joinUrlInput.value).then(function () {
+                copyBtn.textContent = "Copied!";
+                setTimeout(function () { copyBtn.textContent = "Copy"; }, 1200);
+              });
+            };
+            addNameBtn.onclick = addNameFromHost;
+            addNameInput.addEventListener("keydown", function (e) {
+              if (e.key === "Enter") { e.preventDefault(); addNameFromHost(); }
+            });
+            roomInput.oninput = function () { updateJoinArtifacts(); };
+
+            subscribeToRoom();
+          }
+        }
+
+        boot();
+      })();
+    </script>
+  </body>
+</html>

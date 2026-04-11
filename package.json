@@ -1,0 +1,18 @@
+{
+  "name": "globalai-wheel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Realtime wheel of names for live community events",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "firebase": "^12.12.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
+  }
+}
