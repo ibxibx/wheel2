@@ -818,6 +818,8 @@
           return new Promise(function (resolve) {
             setTimeout(function () {
               stopTickSound();
+              // Capture winner number BEFORE Firebase write (winners[] updates async via onValue)
+              var winnerNumber = winners.length + 1;
               // Write winner to Firebase or local
               if (firebaseOk) {
                 roomRef().child("winners").push({ name: winner.name, wonAt: firebase.database.ServerValue.TIMESTAMP });
@@ -827,19 +829,19 @@
                 renderWinners();
               }
               // Show celebration
-              showWinnerCelebration(winner.name, winners.length + 1);
+              showWinnerCelebration(winner.name, winnerNumber);
               spinning = false;
               spinBtn.disabled = false;
               pickFiveBtn.disabled = false;
-              resolve(winner);
+              resolve({ winner, winnerNumber });
             }, 6200);
           });
         }
 
         async function pickFive() {
           for (var i = winners.length; i < 5; i++) {
-            var w = await spinOnce();
-            if (!w) break;
+            var result = await spinOnce();
+            if (!result) break;
             // Wait for user to dismiss the overlay before next spin
             await new Promise(function (resolve) {
               var handler = function () {
