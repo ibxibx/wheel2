@@ -1,0 +1,30 @@
+{
+  "rules": {
+    "rooms": {
+      "$roomId": {
+        ".read": true,
+        ".write": true,
+        "participants": {
+          "$pid": {
+            ".validate": "newData.hasChild('name') && newData.child('name').isString() && newData.child('name').val().length <= 40",
+            "name": { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "joinedAt": { ".validate": true },
+            "$other": { ".validate": false }
+          }
+        },
+        "winners": {
+          "$wid": {
+            "name": { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "wonAt": { ".validate": true },
+            "$other": { ".validate": false }
+          }
+        },
+        "$other": { ".validate": false }
+      }
+    },
+    "$other": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}
